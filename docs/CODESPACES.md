@@ -11,24 +11,26 @@ This guide will help you get the FLUX Image Generator running in GitHub Codespac
 
 2. **Wait for Setup** (2-3 minutes)
    - Codespaces will automatically:
+     - Build a lightweight container
      - Install Python and Node.js
-     - Install all dependencies
+     - Install CPU-optimized PyTorch
      - Configure the environment
-     - Set up port forwarding
 
 3. **Start the Application**
    ```bash
-   npm run dev
+   ./start-dev.sh
    ```
-   Or use the helper script:
-   ```bash
-   ./scripts/start-codespaces.sh
-   ```
+   This will:
+   - Start the backend API immediately
+   - Load the AI model in the background
+   - Launch the frontend development server
+   - Show you all the URLs
 
 4. **Access the App**
-   - Frontend will auto-open at port 3000
+   - Frontend opens automatically at port 3000
    - Backend API runs on port 7860
-   - No manual URL configuration needed!
+   - Model loads in background (5-10 minutes first time)
+   - Check status with: `./check-status.sh`
 
 ## 📋 What's Included
 
@@ -73,30 +75,38 @@ echo "MODEL_ID=black-forest-labs/FLUX.1-dev" >> backend/colab-integration/.env
 ### CPU vs GPU
 
 Codespaces runs on CPU by default. This means:
-- First generation: 5-10 minutes (model download)
-- Subsequent generations: 2-5 minutes
-- Lower resolution recommended (512x512 or 768x768)
+- Model loading: 5-10 minutes (first time only, runs in background)
+- Image generation: 2-5 minutes per image
+- Recommended resolution: 512x512 or 768x768
+- The server starts immediately while model loads
 
-For GPU support, use GitHub Codespaces with GPU (paid feature).
+For faster generation, use GitHub Codespaces with GPU (paid feature).
 
 ## 🛠️ Development Workflow
 
 ### Starting Services
 
-**Option 1: Combined (Recommended)**
+**Recommended: Use the Helper Script**
 ```bash
-npm run dev
+./start-dev.sh
 ```
 
-**Option 2: Separate Terminals**
+This script:
+- Starts the backend API with CPU optimization
+- Loads the model in the background
+- Launches the frontend
+- Shows all URLs and status
+
+**Manual Start (if needed)**
 ```bash
 # Terminal 1 - Backend
 cd backend/colab-integration
-python flux_krea_api.py --codespaces
+export FORCE_CPU=true
+python flux_krea_api.py --host 0.0.0.0 --port 7860 --codespaces
 
-# Terminal 2 - Frontend
+# Terminal 2 - Frontend  
 cd frontend
-npm run dev
+npm run dev -- --host 0.0.0.0
 ```
 
 ### Making Changes
@@ -157,12 +167,18 @@ MODEL_ID=stabilityai/stable-diffusion-3-medium-diffusers
 - Check browser console for errors
 - Try refreshing the page
 
-**3. Slow Generation**
-- Normal on CPU (2-5 minutes)
+**3. Model Not Loading**
+- Check status: `./check-status.sh`
+- View logs: Backend terminal shows progress
+- First load takes 5-10 minutes (downloading 6GB)
+- Server works while model loads
+
+**4. Slow Generation**
+- Normal on CPU (2-5 minutes per image)
 - Try smaller images (512x512)
 - Reduce steps to 20
 
-**4. Out of Memory**
+**5. Out of Memory**
 - Codespaces has 8GB RAM limit
 - Restart codespace if needed
 - Use smaller model or lower resolution

@@ -17,6 +17,7 @@ import asyncio
 import argparse
 import logging
 import subprocess
+import threading
 from typing import Optional
 from datetime import datetime
 
@@ -44,6 +45,9 @@ MODEL_ID = os.environ.get("MODEL_ID", "black-forest-labs/FLUX.1-schnell")  # Fas
 # Global variables
 pipe = None
 device = None
+model_loading_thread = None
+model_loading_started = False
+model_loading_error = None
 
 # Request/Response models
 class GenerateRequest(BaseModel):
@@ -96,23 +100,23 @@ class HealthResponse(BaseModel):
 
 # Initialize model
 def initialize_model():
-    global pipe, device
-    
-    # Check if we should force CPU mode (useful for Codespaces)
-    force_cpu = os.environ.get("FORCE_CPU", "").lower() == "true"
-    device = "cpu" if force_cpu else ("cuda" if torch.cuda.is_available() else "cpu")
-    logger.info(f"Using device: {device}")
-    
-    if device == "cpu":
-        logger.warning("Running on CPU - generation will be slower. Consider using a GPU for better performance.")
-    
-    if device == "cuda":
-        logger.info(f"GPU: {torch.cuda.get_device_name(0)}")
-        logger.info(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
-    
-    logger.info("Loading FLUX model... This may take a few minutes on first run.")
+    global pipe, device, model_loading_error
     
     try:
+        # Check if we should force CPU mode (useful for Codespaces)
+        force_cpu = os.environ.get("FORCE_CPU", "").lower() == "true"
+        device = "cpu" if force_cpu else ("cuda" if torch.cuda.is_available() else "cpu")
+        logger.info(f"Using device: {device}")
+        
+        if device == "cpu":
+            logger.warning("Running on CPU - generation will be slower. Consider using a GPU for better performance.")
+        
+        if device == "cuda":
+            logger.info(f"GPU: {torch.cuda.get_device_name(0)}")
+            logger.info(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+        
+        logger.info("Loading FLUX model... This may take a few minutes on first run.")
+        
         # Download with progress bar for better UX in Codespaces
         logger.info("Downloading model (this may take 5-10 minutes on first run)...")
         
@@ -141,10 +145,21 @@ def initialize_model():
             pipe.enable_model_cpu_offload()
         
         logger.info("Model loaded successfully!")
+        logger.info("🎉 FLUX Image Generator is ready!")
     except Exception as e:
         logger.error(f"Error loading model: {e}")
         logger.error("Note: You may need to authenticate with Hugging Face for some models.")
-        raise
+        model_loading_error = str(e)
+
+def start_model_loading():
+    """Start loading the model in a background thread."""
+    global model_loading_thread, model_loading_started
+    
+    if not model_loading_started:
+        model_loading_started = True
+        logger.info("Starting background model loading...")
+        model_loading_thread = threading.Thread(target=initialize_model, daemon=True)
+        model_loading_thread.start()
 
 # Create FastAPI app
 app = FastAPI(title="FLUX Krea API", version="1.0.0")
@@ -185,8 +200,8 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize model on startup."""
-    initialize_model()
+    """Start model loading in background on startup."""
+    start_model_loading()
 
 @app.get("/")
 async def root():
@@ -214,15 +229,50 @@ async def health_check():
 @app.get("/status")
 async def status_check():
     """Check model loading status and server health."""
-    return {
-        "status": "ok" if pipe is not None else "loading",
-        "model_loaded": pipe is not None,
-        "models_loaded": pipe is not None,  # For backward compatibility
-        "models_loading": pipe is None,
-        "message": "Model is ready" if pipe is not None else "Model is loading, please wait...",
-        "device": str(device) if device else "unknown",
-        "model": MODEL_ID
-    }
+    global model_loading_error
+    
+    if pipe is not None:
+        return {
+            "status": "ok",
+            "model_loaded": True,
+            "models_loaded": True,  # For backward compatibility
+            "models_loading": False,
+            "message": "Model is ready",
+            "device": str(device) if device else "unknown",
+            "model": MODEL_ID
+        }
+    elif model_loading_error:
+        return {
+            "status": "error",
+            "model_loaded": False,
+            "models_loaded": False,
+            "models_loading": False,
+            "message": f"Model loading failed: {model_loading_error}",
+            "device": str(device) if device else "unknown",
+            "model": MODEL_ID,
+            "error": model_loading_error
+        }
+    elif model_loading_started:
+        return {
+            "status": "loading",
+            "model_loaded": False,
+            "models_loaded": False,
+            "models_loading": True,
+            "message": "Model is loading in background (5-10 minutes on first run)...",
+            "device": str(device) if device else "unknown",
+            "model": MODEL_ID,
+            "loading_started": True
+        }
+    else:
+        return {
+            "status": "pending",
+            "model_loaded": False,
+            "models_loaded": False,
+            "models_loading": False,
+            "message": "Model loading has not started yet",
+            "device": str(device) if device else "unknown",
+            "model": MODEL_ID
+        }
 
 @app.post("/generate", response_model=GenerateResponse)
 async def generate_image(request: GenerateRequest):
