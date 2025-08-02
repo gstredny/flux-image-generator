@@ -1,0 +1,47 @@
+{
+  "name": "flux-image-generator",
+  "version": "1.0.0",
+  "description": "AI-powered image generation app with FLUX model",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend/colab-integration && python flux_krea_api.py",
+    "build": "cd frontend && npm run build",
+    "start": "docker-compose up",
+    "start:prod": "docker-compose --profile production up",
+    "docker:build": "docker-compose build",
+    "docker:down": "docker-compose down",
+    "install:all": "npm run install:frontend && npm run install:backend",
+    "install:frontend": "cd frontend && npm install",
+    "install:backend": "cd backend/colab-integration && pip install -r requirements.txt",
+    "clean": "rm -rf frontend/node_modules frontend/dist backend/colab-integration/__pycache__",
+    "test": "npm run test:frontend",
+    "test:frontend": "cd frontend && npm test",
+    "lint": "npm run lint:frontend",
+    "lint:frontend": "cd frontend && npm run lint",
+    "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,md}\"",
+    "codespaces:setup": "bash scripts/setup-codespaces.sh",
+    "codespaces:start": "bash scripts/start-codespaces.sh"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "prettier": "^3.2.5"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gstredny/flux-image-generator.git"
+  },
+  "keywords": [
+    "ai",
+    "image-generation",
+    "flux",
+    "stable-diffusion",
+    "react",
+    "fastapi",
+    "docker",
+    "codespaces"
+  ],
+  "author": "George Stredny",
+  "license": "MIT"
+}

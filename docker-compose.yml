@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  # Backend API service
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: flux-backend
+    ports:
+      - "7860:7860"
+    environment:
+      - CUDA_VISIBLE_DEVICES=-1  # Disable GPU for CPU-only mode
+      - MODEL_ID=black-forest-labs/FLUX.1-schnell
+      - DEVICE=cpu
+    volumes:
+      - ./backend/colab-integration:/app
+      - model-cache:/root/.cache/huggingface
+    command: python flux_krea_api.py --host 0.0.0.0 --port 7860
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: flux-frontend
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_ENDPOINT=http://localhost:7860
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Optional: Nginx reverse proxy for production
+  nginx:
+    image: nginx:alpine
+    container_name: flux-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx-proxy.conf:/etc/nginx/nginx.conf:ro
+      - ./frontend/dist:/usr/share/nginx/html:ro
+    depends_on:
+      - backend
+      - frontend
+    restart: unless-stopped
+    profiles:
+      - production
+
+volumes:
+  model-cache:
+    name: flux-model-cache
