@@ -42,6 +42,10 @@ export interface ApiResponse {
   success: boolean;
   /** Base64 encoded image data (with or without data URL prefix) */
   image?: string;
+  /** Array of images for batch generation */
+  images?: string[];
+  /** Request ID for tracking progress */
+  request_id?: string;
   /** The prompt that was used */
   prompt?: string;
   /** Parameters returned by the backend */
@@ -56,6 +60,8 @@ export interface ApiResponse {
   error?: string;
   /** Server-side generation duration in seconds */
   duration?: number;
+  /** Seed used for generation */
+  seed?: number;
 }
 
 /**
@@ -102,4 +108,90 @@ export interface StatusResponse {
   device?: string;
   /** Model identifier */
   model?: string;
+  /** Loading progress percentage */
+  progress?: number;
+  /** Number of requests in queue */
+  queue_size?: number;
+  /** Active request count */
+  active_requests?: number;
+}
+
+/**
+ * Request for batch image generation
+ */
+export interface BatchGenerateRequest {
+  /** Array of prompts to generate */
+  prompts: string[];
+  /** Generation parameters for all images */
+  steps: number;
+  cfg_guidance: number;
+  width: number;
+  height: number;
+  negative_prompt?: string;
+}
+
+/**
+ * Response from batch generation endpoint
+ */
+export interface BatchGenerateResponse {
+  /** Whether the request was successful */
+  success: boolean;
+  /** Array of request IDs for tracking */
+  request_ids?: string[];
+  /** Message about the batch */
+  message?: string;
+  /** Error if failed */
+  error?: string;
+}
+
+/**
+ * Progress tracking response
+ */
+export interface ProgressResponse {
+  /** Request ID */
+  request_id: string;
+  /** Current status */
+  status: "queued" | "processing" | "completed" | "failed";
+  /** Progress percentage (0-100) */
+  progress: number;
+  /** Result when completed */
+  result?: {
+    images: string[];
+    seed: number;
+    duration: number;
+  };
+  /** Error if failed */
+  error?: string;
+  /** Creation timestamp */
+  created_at?: number;
+}
+
+/**
+ * Model information
+ */
+export interface ModelInfo {
+  /** Model ID */
+  id: string;
+  /** Display name */
+  name: string;
+  /** Loading status */
+  status: "loading" | "loaded" | "error";
+  /** Text encoder information */
+  text_encoders?: {
+    t5?: {
+      model: string;
+      parameters?: string;
+      loaded: boolean;
+    };
+    clip?: {
+      model: string;
+      loaded: boolean;
+    };
+  };
+  /** Recommended settings */
+  recommended_settings?: {
+    steps: string;
+    guidance: string;
+    resolution: string;
+  };
 }

@@ -1,5 +1,13 @@
 import axios, { type AxiosInstance, AxiosError, type InternalAxiosRequestConfig } from 'axios';
-import type { GenerationParameters, ApiResponse, HealthResponse, StatusResponse } from '../types';
+import type { 
+  GenerationParameters, 
+  ApiResponse, 
+  HealthResponse, 
+  StatusResponse,
+  BatchGenerateResponse,
+  ProgressResponse,
+  ModelInfo
+} from '../types';
 import { STORAGE_KEYS } from '../utils/constants';
 
 // Extend Axios config to include retry count and start time
@@ -72,7 +80,11 @@ class ApiService {
    */
   private getApiEndpoint(): string {
     const stored = localStorage.getItem(STORAGE_KEYS.apiEndpoint);
-    return stored || import.meta.env.VITE_API_ENDPOINT || 'http://localhost:7860';
+    // Trim whitespace from stored value if it exists
+    if (stored) {
+      return stored.trim().replace(/\/+$/, '');
+    }
+    return import.meta.env.VITE_API_ENDPOINT || 'http://localhost:7860';
   }
 
   /**
@@ -80,13 +92,16 @@ class ApiService {
    * @param endpoint - The new API endpoint URL
    */
   public updateApiEndpoint(endpoint: string): void {
+    // Trim whitespace and remove trailing slashes
+    const sanitizedEndpoint = endpoint.trim().replace(/\/+$/, '');
+    
     console.log('🔧 Updating API endpoint:', {
       from: this.client.defaults.baseURL,
-      to: endpoint
+      to: sanitizedEndpoint
     });
     
-    localStorage.setItem(STORAGE_KEYS.apiEndpoint, endpoint);
-    this.client.defaults.baseURL = endpoint;
+    localStorage.setItem(STORAGE_KEYS.apiEndpoint, sanitizedEndpoint);
+    this.client.defaults.baseURL = sanitizedEndpoint;
     // Ensure ngrok header is preserved
     this.client.defaults.headers.common['ngrok-skip-browser-warning'] = 'true';
   }
@@ -132,17 +147,28 @@ class ApiService {
    */
   async checkHealth(): Promise<HealthResponse> {
     try {
-      const response = await this.client.get<HealthResponse>('/health');
+      const response = await this.client.get<any>('/health');
       // Map the response to match our expected format
       const data = response.data;
+      
+      // Handle KREA backend format
+      if (data.premium && data.model_loaded !== undefined) {
+        return {
+          status: data.model_loaded ? 'healthy' : 'unhealthy',
+          model: data.model || 'FLUX.1-Krea-dev',
+          version: data.version || '1.0.0' // Provide default version for KREA
+        };
+      }
+      
+      // Handle standard format
       return {
         status: (data.status === 'alive' || data.status === 'healthy') ? 'healthy' : 'unhealthy',
         model: data.model,
-        version: data.version
+        version: data.version || '1.0.0' // Default version if not provided
       };
     } catch (error) {
       console.error('❌ Health check failed:', {
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         code: axios.isAxiosError(error) ? error.code : undefined,
         endpoint: this.client.defaults.baseURL
       });
@@ -166,10 +192,20 @@ class ApiService {
    */
   async checkStatus(): Promise<{ status: string; model_loaded: boolean; message?: string }> {
     try {
-      const response = await this.client.get<StatusResponse>('/status');
+      const response = await this.client.get<any>('/status');
       
       // Handle both model_loaded and models_loaded fields
       const data = response.data;
+      
+      // Handle KREA format
+      if (data.premium) {
+        return {
+          status: data.status || 'ok',
+          model_loaded: data.models_loaded ?? data.model_loaded ?? false,
+          message: data.progress || data.message || (data.models_loading ? 'Models are loading...' : undefined)
+        };
+      }
+      
       return {
         status: data.status || 'ok',
         model_loaded: data.model_loaded ?? data.models_loaded ?? false,
@@ -177,7 +213,7 @@ class ApiService {
       };
     } catch (error) {
       console.error('❌ Status check failed:', {
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         endpoint: `${this.client.defaults.baseURL}/status`
       });
       return { status: 'error', model_loaded: false, message: 'Unable to check status' };
@@ -223,7 +259,7 @@ class ApiService {
       };
     } catch (error) {
       console.error('❌ Generation failed:', {
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         response: axios.isAxiosError(error) ? error.response?.data : undefined,
         status: axios.isAxiosError(error) ? error.response?.status : undefined
       });
@@ -280,10 +316,137 @@ class ApiService {
       return response.data.models || [];
     } catch (error) {
       console.error('❌ Failed to fetch models:', {
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         endpoint: `${this.client.defaults.baseURL}/models`
       });
       return [];
+    }
+  }
+
+  /**
+   * Generates multiple images in batch.
+   * @param prompts - Array of prompts to generate
+   * @param parameters - Generation parameters for all images
+   * @returns BatchGenerateResponse with request IDs for tracking
+   */
+  async generateBatch(prompts: string[], parameters: Omit<GenerationParameters, 'prompt'>): Promise<BatchGenerateResponse> {
+    try {
+      console.log('🎨 Starting batch generation:', {
+        count: prompts.length,
+        parameters
+      });
+
+      const response = await this.client.post<BatchGenerateResponse>('/generate/batch', {
+        prompts,
+        steps: parameters.steps,
+        cfg_guidance: parameters.cfgScale,
+        width: parameters.width,
+        height: parameters.height,
+        negative_prompt: ''
+      });
+
+      return response.data;
+    } catch (error) {
+      console.error('❌ Batch generation failed:', error);
+      
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 503) {
+          throw new Error('🔄 Models are still loading. Please wait and try again.');
+        }
+        if (error.response?.data?.error) {
+          throw new Error(error.response.data.error);
+        }
+      }
+      
+      throw new Error('Failed to start batch generation');
+    }
+  }
+
+  /**
+   * Checks the progress of a generation request.
+   * @param requestId - The request ID to check
+   * @returns ProgressResponse with current status and progress
+   */
+  async checkProgress(requestId: string): Promise<ProgressResponse> {
+    try {
+      const response = await this.client.get<ProgressResponse>(`/progress/${requestId}`);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Progress check failed:', error);
+      
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        throw new Error('Request ID not found');
+      }
+      
+      throw new Error('Failed to check progress');
+    }
+  }
+
+  /**
+   * Polls for generation completion with progress updates.
+   * @param requestId - The request ID to poll
+   * @param onProgress - Callback for progress updates
+   * @param timeout - Maximum time to wait in milliseconds
+   * @returns The completed result or throws an error
+   */
+  async pollForCompletion(
+    requestId: string, 
+    onProgress?: (progress: number) => void,
+    timeout: number = 300000 // 5 minutes
+  ): Promise<{ images: string[]; seed: number; duration: number }> {
+    const startTime = Date.now();
+    
+    while (Date.now() - startTime < timeout) {
+      const progress = await this.checkProgress(requestId);
+      
+      if (onProgress) {
+        onProgress(progress.progress);
+      }
+      
+      if (progress.status === 'completed' && progress.result) {
+        return progress.result;
+      }
+      
+      if (progress.status === 'failed') {
+        throw new Error(progress.error || 'Generation failed');
+      }
+      
+      // Wait before next poll
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    
+    throw new Error('Generation timeout');
+  }
+
+  /**
+   * Gets detailed model information including T5 and CLIP status.
+   * @returns Array of ModelInfo objects
+   */
+  async getModelsInfo(): Promise<ModelInfo[]> {
+    try {
+      const response = await this.client.get<{ models: ModelInfo[] }>('/models');
+      return response.data.models || [];
+    } catch (error) {
+      console.error('❌ Failed to fetch model info:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Gets extended status with queue and progress information.
+   * @returns Extended StatusResponse
+   */
+  async getExtendedStatus(): Promise<StatusResponse> {
+    try {
+      const response = await this.client.get<StatusResponse>('/status');
+      return response.data;
+    } catch (error) {
+      console.error('❌ Extended status check failed:', error);
+      return {
+        status: 'error',
+        model_loaded: false,
+        progress: 0
+      };
     }
   }
 }

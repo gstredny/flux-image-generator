@@ -14,6 +14,8 @@ Where Dreams Become Images - A magical AI-powered image generation workshop buil
 
 - **🎨 Magical Interface**: Stunning glassmorphic design with dreamy animations
 - **🌟 Real-time Generation**: Transform your dreams into images with FLUX model
+- **🧠 T5-XXL Text Encoder**: 11B parameter Google T5 model for superior prompt understanding
+- **🚀 Batch Generation**: Generate up to 4 images simultaneously with progress tracking
 - **🎯 Parameter Control**: Fine-tune generation with steps, CFG scale, seed, and resolution
 - **🖼️ Image Gallery**: Browse your dream collection with swipe gestures
 - **🔄 Smart Retry Logic**: Automatic retry with exponential backoff
@@ -21,6 +23,7 @@ Where Dreams Become Images - A magical AI-powered image generation workshop buil
 - **📱 Mobile Magic**: Perfect experience on all devices with touch optimization
 - **⌨️ Quick Controls**: Ctrl+Enter to generate your dreams
 - **💾 Dream Memory**: Save and restore your creative history
+- **⚡ Performance Optimized**: xFormers, VAE slicing, and mixed precision for faster generation
 
 ## 🚀 Quick Start
 
@@ -67,12 +70,14 @@ The frontend will start at `http://localhost:5173`
 
 ### Backend Setup
 
-#### Option 1: Google Colab (Recommended)
+#### Option 1: Google Colab Pro (Recommended)
 
-1. Open your Google Colab notebook with FLUX Krea API
-2. Make sure it's running and you have the ngrok URL
-3. Open the frontend Settings (gear icon) and paste your Colab URL
-4. Click "Test Connection" to verify it's working
+**New! FLUX KREA with T5-XXL** - Superior text understanding with 11B parameter model
+
+1. See [Colab Pro Setup Guide](README_COLAB_PRO.md) for detailed instructions
+2. Upload the notebook from `backend/colab-integration/flux_krea_pro_notebook.ipynb`
+3. Run the cells to load FLUX KREA with T5-XXL encoder
+4. Copy the ngrok URL and paste in frontend Settings
 
 #### Option 2: Local Installation
 
@@ -249,6 +254,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 📖 Additional Documentation
 
+- [Google Colab Pro Setup Guide](README_COLAB_PRO.md) - **New! FLUX KREA with T5-XXL**
 - [GitHub Codespaces Setup](docs/CODESPACES.md)
 - [API Documentation](docs/api-documentation.md)
 - [Deployment Guide](docs/deployment.md)

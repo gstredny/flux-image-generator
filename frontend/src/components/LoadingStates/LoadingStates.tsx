@@ -4,9 +4,11 @@ import { cn } from '../../utils/cn';
 interface LoadingStatesProps {
   state: 'connecting' | 'loading-models' | 'generating';
   className?: string;
+  progress?: number;
+  message?: string;
 }
 
-export function LoadingStates({ state, className }: LoadingStatesProps) {
+export function LoadingStates({ state, className, progress, message }: LoadingStatesProps) {
   return (
     <div className={cn("flex flex-col items-center justify-center p-8 space-y-4", className)}>
       <div className="relative">
@@ -29,10 +31,21 @@ export function LoadingStates({ state, className }: LoadingStatesProps) {
         
         {state === 'loading-models' && (
           <>
-            <p className="text-lg font-medium">AI models are loading...</p>
-            <p className="text-sm text-muted-foreground">
-              This may take a moment. The models are being initialized.
+            <p className="text-lg font-medium">
+              {message || 'AI models are loading...'}
             </p>
+            <p className="text-sm text-muted-foreground">
+              {progress !== undefined ? (
+                <>Loading progress: {progress}%</>
+              ) : (
+                'This may take a moment. The models are being initialized.'
+              )}
+            </p>
+            {message?.includes('T5-XXL') && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Loading Google's T5-XXL (11B parameters) for enhanced text understanding
+              </p>
+            )}
           </>
         )}
         
@@ -46,11 +59,18 @@ export function LoadingStates({ state, className }: LoadingStatesProps) {
         )}
       </div>
       
-      {/* Progress indicator for generating state */}
-      {state === 'generating' && (
+      {/* Progress indicator */}
+      {(state === 'generating' || (state === 'loading-models' && progress !== undefined)) && (
         <div className="w-full max-w-xs">
           <div className="h-2 bg-secondary rounded-full overflow-hidden">
-            <div className="h-full bg-primary rounded-full animate-progress" />
+            {progress !== undefined ? (
+              <div 
+                className="h-full bg-primary rounded-full transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              />
+            ) : (
+              <div className="h-full bg-primary rounded-full animate-progress" />
+            )}
           </div>
         </div>
       )}

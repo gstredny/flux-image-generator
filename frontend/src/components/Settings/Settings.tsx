@@ -4,6 +4,7 @@ import { apiService } from '../../services/api';
 import { storageService } from '../../services/storage';
 import { X, Wifi, WifiOff, RefreshCw, Download, Upload, Trash2 } from 'lucide-react';
 import { cn } from '../../utils/cn';
+import { isValidUrl, detectUrlIssues, sanitizeUrl } from '../../utils/validation';
 import toast from 'react-hot-toast';
 
 interface SettingsProps {
@@ -22,26 +23,27 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
     setApiUrl(preferences.apiEndpoint);
   }, []);
 
-  const validateUrl = (url: string): boolean => {
-    try {
-      const urlObj = new URL(url);
-      return urlObj.protocol === 'http:' || urlObj.protocol === 'https:';
-    } catch {
-      return false;
-    }
-  };
 
   const handleSaveUrl = () => {
-    if (!validateUrl(apiUrl)) {
+    const trimmedUrl = sanitizeUrl(apiUrl);
+    
+    // Check for URL issues
+    const urlIssue = detectUrlIssues(apiUrl);
+    if (urlIssue) {
+      toast.error(urlIssue);
+      return;
+    }
+    
+    if (!isValidUrl(trimmedUrl)) {
       toast.error('Please enter a valid URL (e.g., https://abc123.ngrok.io)');
       return;
     }
 
-    apiService.updateApiEndpoint(apiUrl);
+    apiService.updateApiEndpoint(trimmedUrl);
     const preferences = storageService.getPreferences();
     storageService.savePreferences({
       ...preferences,
-      apiEndpoint: apiUrl,
+      apiEndpoint: trimmedUrl,
     });
     
     toast.success('API endpoint updated successfully');
@@ -51,7 +53,16 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
   };
 
   const handleTestConnection = async () => {
-    if (!validateUrl(apiUrl)) {
+    const trimmedUrl = sanitizeUrl(apiUrl);
+    
+    // Check for URL issues
+    const urlIssue = detectUrlIssues(apiUrl);
+    if (urlIssue) {
+      toast.error(urlIssue);
+      return;
+    }
+    
+    if (!isValidUrl(trimmedUrl)) {
       toast.error('Please enter a valid URL first');
       return;
     }
@@ -60,7 +71,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
     setConnectionTestResult(null);
     
     // Debug logging
-    console.log('Testing connection to:', apiUrl);
+    console.log('Testing connection to:', trimmedUrl);
 
     try {
       console.log('Checking health endpoint...');
@@ -162,6 +173,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
                 type="url"
                 value={apiUrl}
                 onChange={(e) => setApiUrl(e.target.value)}
+                onBlur={(e) => setApiUrl(sanitizeUrl(e.target.value))}
                 placeholder="https://abc123.ngrok.io"
                 className={cn(
                   "w-full px-3 py-2 rounded-md",
@@ -179,7 +191,7 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
               <Button
                 onClick={handleSaveUrl}
                 className="flex-1"
-                disabled={!apiUrl || !validateUrl(apiUrl)}
+                disabled={!apiUrl || !isValidUrl(sanitizeUrl(apiUrl))}
               >
                 Save URL
               </Button>
@@ -217,9 +229,10 @@ export function Settings({ isOpen, onClose }: SettingsProps) {
               variant="outline"
               size="sm"
               onClick={async () => {
-                console.log('Direct fetch test to:', `${apiUrl}/health`);
+                const trimmedUrl = sanitizeUrl(apiUrl);
+                console.log('Direct fetch test to:', `${trimmedUrl}/health`);
                 try {
-                  const response = await fetch(`${apiUrl}/health`);
+                  const response = await fetch(`${trimmedUrl}/health`);
                   const text = await response.text();
                   console.log('Direct fetch response:', response.status, text);
                   alert(`Status: ${response.status}\nResponse: ${text}`);

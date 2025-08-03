@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Toaster } from 'react-hot-toast';
 import { AppProvider } from './contexts/AppContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -9,17 +9,60 @@ import { ImageGallery } from './components/ImageGallery';
 import { Settings } from './components/Settings';
 import { LoadingStates } from './components/LoadingStates';
 import { DreamFactoryHeader } from './components/DreamFactoryHeader';
+import { BatchGenerator } from './components/BatchGenerator';
 import { useImageGenerator } from './hooks/useImageGenerator';
 import { useTheme } from './contexts/ThemeContext';
 import { useApp } from './contexts/AppContext';
 import { Sun, Moon, Laptop, Settings as SettingsIcon } from 'lucide-react';
 import { Button } from './components/ui/button';
+import { apiService } from './services/api';
 
 function AppContent() {
   const { generateImage, connectionStatus } = useImageGenerator();
   const { theme, setTheme } = useTheme();
   const { state } = useApp();
   const [showSettings, setShowSettings] = useState(false);
+  const [modelStatus, setModelStatus] = useState<{
+    progress?: number;
+    message?: string;
+  }>({});
+
+  // Poll for model loading status
+  useEffect(() => {
+    if (connectionStatus === 'connected') {
+      const checkModelStatus = async () => {
+        try {
+          const status = await apiService.getExtendedStatus();
+          setModelStatus({
+            progress: status.progress,
+            message: status.status
+          });
+          
+          // Stop polling if model is loaded
+          if (status.model_loaded) {
+            return true;
+          }
+          return false;
+        } catch (error) {
+          console.error('Failed to get status:', error);
+          return false;
+        }
+      };
+
+      // Check immediately
+      checkModelStatus();
+
+      // Then poll every 2 seconds until loaded
+      const interval = setInterval(async () => {
+        const isLoaded = await checkModelStatus();
+        if (isLoaded) {
+          clearInterval(interval);
+        }
+      }, 2000);
+
+      return () => clearInterval(interval);
+    }
+  }, [connectionStatus]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -72,7 +115,10 @@ function AppContent() {
             <div className="bg-card border border-border rounded-lg p-6 space-y-6">
               <PromptInput />
               <ParameterControls />
-              <GenerateButton onClick={generateImage} />
+              <div className="space-y-3">
+                <GenerateButton onClick={generateImage} />
+                <BatchGenerator />
+              </div>
             </div>
           </div>
 
@@ -80,7 +126,15 @@ function AppContent() {
           <div className="lg:col-span-2">
             <div className="bg-card border border-border rounded-lg p-6 min-h-[600px]">
               <h2 className="text-xl font-semibold mb-4">Generated Images</h2>
-              {state.isGenerating ? (
+              {connectionStatus === 'checking' ? (
+                <LoadingStates state="connecting" />
+              ) : connectionStatus === 'connected' && modelStatus.progress !== undefined && modelStatus.progress < 100 ? (
+                <LoadingStates 
+                  state="loading-models" 
+                  progress={modelStatus.progress}
+                  message={modelStatus.message}
+                />
+              ) : state.isGenerating ? (
                 <LoadingStates state="generating" />
               ) : (
                 <ImageGallery />
